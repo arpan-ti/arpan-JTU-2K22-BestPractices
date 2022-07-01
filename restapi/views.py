@@ -16,7 +16,7 @@ from rest_framework import status
 
 from restapi.models import (Expenses, Groups, Category)
 from restapi.serializers import (UserSerializer, CategorySerializer,  GroupSerializer,  ExpensesSerializer, UserExpense)
-from restapi.custom_exception import ()
+from restapi.custom_exception import (UnauthorizedUserException, BadRequestException)
 
 
 
@@ -29,6 +29,14 @@ def logout(request):
     request.user.auth_token.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
 
+def get_user_ids(body,type):
+    user_ids = []
+    if body.get(type, None) is not None and body[type].get('user_ids', None) is not None:
+            user_ids = body[type]['user_ids']
+            for user_id in user_ids:
+                if not User.objects.filter(id=user_id).exists():
+                    raise BadRequestException()
+    return user_ids
 
 @api_view(['GET'])
 def balance(request):
@@ -111,14 +119,11 @@ class GROUP_VIEW_SET(ModelViewSet):
         if group not in self.getQuerySet():
             raise UnauthorizedUserException()
         body = request.data
-        if body.get('add', None) is not None and body['add'].get('user_ids', None) is not None:
-            added_ids = body['add']['user_ids']
-            for user_id in added_ids:
-                group.members.add(user_id)
-        if body.get('remove', None) is not None and body['remove'].get('user_ids', None) is not None:
-            removed_ids = body['remove']['user_ids']
-            for user_id in removed_ids:
-                group.members.remove(user_id)
+        added_ids=get_user_ids(body,'add')
+        group.members.add(*added_ids)
+        
+        removed_ids=get_user_ids(body,'remove')
+        group.members.remove(*user_id)
         group.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
