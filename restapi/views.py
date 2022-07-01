@@ -7,6 +7,10 @@ from datetime import datetime
 from django.http import HttpResponse
 from django.contrib.auth.models import User
 
+import logging
+# Get an instance of a logger
+logger = logging.getLogger(__name__)
+
 # Create your views here.
 from rest_framework.permissions import AllowAny
 from rest_framework.decorators import (api_view, authentication_classes,  action,permission_classes)
@@ -21,12 +25,14 @@ from restapi.custom_exception import (UnauthorizedUserException, BadRequestExcep
 
 
 def index(_request):
+    logging.info("index: Function executed successfully")
     return HttpResponse("Hello, world. You're at Rest.")
 
 
 @api_view(['POST'])
 def logout(request):
     request.user.auth_token.delete()
+    looging.info("logout: auth token deleted and user logged out")
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 def get_user_ids(body,type):
@@ -35,6 +41,7 @@ def get_user_ids(body,type):
             user_ids = body[type]['user_ids']
             for user_id in user_ids:
                 if not User.objects.filter(id=user_id).exists():
+                    logging.info("get_user_ids: Bad request exception")
                     raise BadRequestException()
     return user_ids
 
@@ -55,6 +62,7 @@ def balance(request):
     final_balance = {k: v for k, v in final_balance.items() if v != 0}
 
     response = [{"user": k, "amount": int(v)} for k, v in final_balance.items()]
+    logging.info("balance: final balance returned")
     return Response(response, status=status.HTTP_200_OK)
 
 
@@ -102,6 +110,7 @@ class GROUP_VIEW_SET(ModelViewSet):
         groups = user.members.all()
         if self.request.query_params.get('q', None) is not None:
             groups = groups.filter(name__icontains=self.request.query_params.get('q', None))
+            logging.info(f"GROUP_VIEW_SET: getQuerySet: Returned users with name containing{self.request.query_params.get('q', None)}")
         return groups
 
     def create(self, request, *args, **kwargs):
@@ -111,6 +120,7 @@ class GROUP_VIEW_SET(ModelViewSet):
         group.save()
         group.members.add(user)
         serializer = self.get_serializer(group)
+        logging.info("GROUP_VIEW_SET: create: user added to the group")
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(methods=['put'], detail=True)
@@ -121,9 +131,11 @@ class GROUP_VIEW_SET(ModelViewSet):
         body = request.data
         added_ids=get_user_ids(body,'add')
         group.members.add(*added_ids)
+        logging.info("GROUP_VIEW_SET: members: Users added")
         
         removed_ids=get_user_ids(body,'remove')
         group.members.remove(*user_id)
+        logging.info("GROUP_VIEW_SET: members: Users removed")
         group.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -163,7 +175,7 @@ class GROUP_VIEW_SET(ModelViewSet):
                 start += 1
             else:
                 end -= 1
-
+        logging.info("GROUP_VIEW_SET: baances: Calculated balances")
         return Response(balances, status=status.HTTP_200_OK)
 
 
@@ -206,6 +218,7 @@ def sort_by_time_stamp(logs):
         data.append(log.split(" "))
     # print(data)
     data = sorted(data, key=lambda elem: elem[1])
+    logging.info("sort_by_time_stamp: Data sorted according to timestamp")
     return data
 
 def response_format(raw_data):
