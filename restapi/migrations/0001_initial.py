@@ -8,9 +8,9 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     initial = True
-    decimal_places=2
-    max_digits=10
-    max_length=200
+    DECIMAL_PLACES=2
+    MAX_DIGITS=10
+    MAX_LENGTH=200
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
@@ -21,15 +21,15 @@ class Migration(migrations.Migration):
             name='Category',
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length)),
+                ('name', models.CharField(max_length=MAX_LENGTH)),
             ],
         ),
         migrations.CreateModel(
             name='Expenses',
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('description', models.CharField(max_length)),
-                ('total_amount', models.DecimalField(decimal_places, max_digits)),
+                ('description', models.CharField(max_length=MAX_LENGTH)),
+                ('total_amount', models.DecimalField(decimal_places=DECIMAL_PLACES, max_digits=MAX_DIGITS)),
                 ('category', models.ForeignKey(default=1, on_delete=django.db.models.deletion.CASCADE, to='restapi.category')),
             ],
         ),
@@ -37,8 +37,8 @@ class Migration(migrations.Migration):
             name='UserBalance',
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('amount_owed', models.DecimalField(decimal_places, max_digits)),
-                ('amount_lent', models.DecimalField(decimal_places, max_digits)),
+                ('amount_owed', models.DecimalField(decimal_places=DECIMAL_PLACES, max_digits=MAX_DIGITS)),
+                ('amount_lent', models.DecimalField(decimal_places=DECIMAL_PLACES, max_digits=MAX_DIGITS)),
                 ('expense', models.ForeignKey(default=1, on_delete=django.db.models.deletion.CASCADE, related_name='users', to='restapi.expenses')),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
             ],
