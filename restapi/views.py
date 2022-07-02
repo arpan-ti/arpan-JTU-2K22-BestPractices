@@ -6,6 +6,7 @@ from datetime import datetime
 
 from django.http import HttpResponse
 from django.contrib.auth.models import User
+from concurrent.futures import ThreadPoolExecutor
 
 import logging
 # Get an instance of a logger
@@ -22,7 +23,7 @@ from restapi.models import (Expenses, Groups, Category)
 from restapi.serializers import (UserSerializer, CategorySerializer,  GroupSerializer,  ExpensesSerializer, UserExpense)
 from restapi.custom_exception import (UnauthorizedUserException, BadRequestException)
 
-
+from constants import MAX_TIME_FOR_READING
 
 def index(_request):
     logging.info("index: Function executed successfully")
@@ -279,10 +280,16 @@ def multiThreadedReader(urls, num_threads):
     """
         Read multiple files through HTTP
     """
+    if num_threads<=0 or num_threads>30:
+        logging.error('multiThreadedReader: Parallel Processing Count out of expected bounds')
+        raise Exception("Parallel Processing Count out of expected bounds")
+        
     result = []
-    for url in urls:
-        data = reader(url, 60)
-        data = data.decode('utf-8')
-        result.extend(data.split("\n"))
-    result = sorted(result, key=lambda elem:elem[1])
+    with ThreadPoolExecutor(max_workers=num_threads) as executors:
+        futures = {executor.submit(reader, url, MAX_TIME_FOR_READING): url for url in urls}
+        for future in concurrent.futures.as_completed(futures):
+            data = future.result()
+            data = data.decode('utf-8')
+            result.extend(data.split("\n"))
+        result = sorted(result, key = lambda elem:elem[1])
     return result
