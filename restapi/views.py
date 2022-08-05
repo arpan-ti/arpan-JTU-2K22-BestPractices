@@ -1,36 +1,50 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 from decimal import Decimal
-import pandas as pd
-import numpy as np
 import urllib.request
 from datetime import datetime
 
 from django.http import HttpResponse
 from django.contrib.auth.models import User
+from concurrent.futures import ThreadPoolExecutor
+
+import logging
+# Get an instance of a logger
+logger = logging.getLogger(__name__)
 
 # Create your views here.
 from rest_framework.permissions import AllowAny
-from rest_framework.decorators import *
+from rest_framework.decorators import (api_view, authentication_classes,  action,permission_classes)
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.response import Response
 from rest_framework import status
 
-from restapi.models import *
-from restapi.serializers import *
-from restapi.custom_exception import *
+from restapi.models import (Expenses, Groups, Category)
+from restapi.serializers import (UserSerializer, CategorySerializer,  GroupSerializer,  ExpensesSerializer, UserExpense)
+from restapi.custom_exception import (UnauthorizedUserException, BadRequestException)
 
-
+from constants import MAX_TIME_FOR_READING
 
 def index(_request):
+    logging.info("index: Function executed successfully")
     return HttpResponse("Hello, world. You're at Rest.")
 
 
 @api_view(['POST'])
 def logout(request):
     request.user.auth_token.delete()
+    looging.info("logout: auth token deleted and user logged out")
     return Response(status=status.HTTP_204_NO_CONTENT)
 
+def get_user_ids(body,type):
+    user_ids = []
+    if body.get(type, None) is not None and body[type].get('user_ids', None) is not None:
+            user_ids = body[type]['user_ids']
+            for user_id in user_ids:
+                if not User.objects.filter(id=user_id).exists():
+                    logging.info("get_user_ids: Bad request exception")
+                    raise BadRequestException()
+    return user_ids
 
 @api_view(['GET'])
 def balance(request):
@@ -49,7 +63,8 @@ def balance(request):
     final_balance = {k: v for k, v in final_balance.items() if v != 0}
 
     response = [{"user": k, "amount": int(v)} for k, v in final_balance.items()]
-    return Response(response, status=200)
+    logging.info("balance: final balance returned")
+    return Response(response, status=status.HTTP_200_OK)
 
 
 def normalize(expense):
@@ -75,27 +90,28 @@ def normalize(expense):
     return balances
 
 
-class user_view_set(ModelViewSet):
-    queryset = User.objects.all()
+class UserViewSet(ModelViewSet):
+    QuerySet = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = (AllowAny,)
 
 
-class category_view_set(ModelViewSet):
-    queryset = Category.objects.all()
+class CategoryViewSet(ModelViewSet):
+    QuerySet = Category.objects.all()
     serializer_class = CategorySerializer
     http_method_names = ['get', 'post']
 
 
-class group_view_set(ModelViewSet):
-    queryset = Groups.objects.all()
+class GroupViewSet(ModelViewSet):
+    QuerySet = Groups.objects.all()
     serializer_class = GroupSerializer
 
-    def get_queryset(self):
+    def getQuerySet(self):
         user = self.request.user
         groups = user.members.all()
         if self.request.query_params.get('q', None) is not None:
             groups = groups.filter(name__icontains=self.request.query_params.get('q', None))
+            logging.info(f"GROUP_VIEW_SET: getQuerySet: Returned users with name containing{self.request.query_params.get('q', None)}")
         return groups
 
     def create(self, request, *args, **kwargs):
@@ -105,38 +121,38 @@ class group_view_set(ModelViewSet):
         group.save()
         group.members.add(user)
         serializer = self.get_serializer(group)
-        return Response(serializer.data, status=201)
+        logging.info("GROUP_VIEW_SET: create: user added to the group")
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(methods=['put'], detail=True)
     def members(self, request, pk=None):
         group = Groups.objects.get(id=pk)
-        if group not in self.get_queryset():
+        if group not in self.getQuerySet():
             raise UnauthorizedUserException()
         body = request.data
-        if body.get('add', None) is not None and body['add'].get('user_ids', None) is not None:
-            added_ids = body['add']['user_ids']
-            for user_id in added_ids:
-                group.members.add(user_id)
-        if body.get('remove', None) is not None and body['remove'].get('user_ids', None) is not None:
-            removed_ids = body['remove']['user_ids']
-            for user_id in removed_ids:
-                group.members.remove(user_id)
+        added_ids=get_user_ids(body,'add')
+        group.members.add(*added_ids)
+        logging.info("GROUP_VIEW_SET: members: Users added")
+        
+        removed_ids=get_user_ids(body,'remove')
+        group.members.remove(*user_id)
+        logging.info("GROUP_VIEW_SET: members: Users removed")
         group.save()
-        return Response(status=204)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(methods=['get'], detail=True)
     def expenses(self, _request, pk=None):
         group = Groups.objects.get(id=pk)
-        if group not in self.get_queryset():
+        if group not in self.getQuerySet():
             raise UnauthorizedUserException()
         expenses = group.expenses_set
         serializer = ExpensesSerializer(expenses, many=True)
-        return Response(serializer.data, status=200)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(methods=['get'], detail=True)
     def balances(self, _request, pk=None):
         group = Groups.objects.get(id=pk)
-        if group not in self.get_queryset():
+        if group not in self.getQuerySet():
             raise UnauthorizedUserException()
         expenses = Expenses.objects.filter(group=group)
         dues = {}
@@ -160,15 +176,15 @@ class group_view_set(ModelViewSet):
                 start += 1
             else:
                 end -= 1
+        logging.info("GROUP_VIEW_SET: baances: Calculated balances")
+        return Response(balances, status=status.HTTP_200_OK)
 
-        return Response(balances, status=200)
 
-
-class expenses_view_set(ModelViewSet):
-    queryset = Expenses.objects.all()
+class ExpensesViewSet(ModelViewSet):
+    querySet = Expenses.objects.all()
     serializer_class = ExpensesSerializer
 
-    def get_queryset(self):
+    def getQuerySet(self):
         user = self.request.user
         if self.request.query_params.get('q', None) is not None:
             expenses = Expenses.objects.filter(users__in=user.expenses.all())\
@@ -203,6 +219,7 @@ def sort_by_time_stamp(logs):
         data.append(log.split(" "))
     # print(data)
     data = sorted(data, key=lambda elem: elem[1])
+    logging.info("sort_by_time_stamp: Data sorted according to timestamp")
     return data
 
 def response_format(raw_data):
@@ -263,10 +280,16 @@ def multiThreadedReader(urls, num_threads):
     """
         Read multiple files through HTTP
     """
+    if num_threads<=0 or num_threads>30:
+        logging.error('multiThreadedReader: Parallel Processing Count out of expected bounds')
+        raise Exception("Parallel Processing Count out of expected bounds")
+        
     result = []
-    for url in urls:
-        data = reader(url, 60)
-        data = data.decode('utf-8')
-        result.extend(data.split("\n"))
-    result = sorted(result, key=lambda elem:elem[1])
+    with ThreadPoolExecutor(max_workers=num_threads) as executors:
+        futures = {executor.submit(reader, url, MAX_TIME_FOR_READING): url for url in urls}
+        for future in concurrent.futures.as_completed(futures):
+            data = future.result()
+            data = data.decode('utf-8')
+            result.extend(data.split("\n"))
+        result = sorted(result, key = lambda elem:elem[1])
     return result

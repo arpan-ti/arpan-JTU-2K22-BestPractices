@@ -2,8 +2,7 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 from rest_framework.authtoken import views
 
-from restapi.views import user_view_set, category_view_set, group_view_set, expenses_view_set, index, logout, balance, \
-    logProcessor
+from restapi.views import user_view_set, category_view_set, group_view_set, expenses_view_set, index, logout, balance, logProcessor
 
 
 router = DefaultRouter()
